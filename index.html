@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <link rel="manifest" href="manifest.json">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>키오스크 주문</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Nanum Gothic', sans-serif, sans-serif;
+      background: #eee;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .kiosk {
+      background: #fff;
+      border: 2px solid #333;
+      border-radius: 10px;
+      overflow: hidden;
+      width: 100%;
+      max-width: 500px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .category-bar {
+      display: flex;
+    }
+    .category-button {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      background: #e33;
+      color: white;
+      font-size: 18px;
+      user-select: none;
+    }
+    .category-button.active { background: #900; }
+
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 5px;
+      padding: 10px;
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+
+    .menu-item {
+      background: #fff5f5;
+      border: 1px solid #ccc;
+      text-align: center;
+      padding: 5px;
+      cursor: pointer;
+      transition: transform 0.1s;
+      user-select: none;
+    }
+
+    .menu-item:active {
+      transform: scale(0.97);
+    }
+
+    .menu-item img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+    }
+
+    .order-summary {
+      border-top: 2px solid #ccc;
+      background: #f7f7f7;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      height: 250px;
+    }
+
+    .order-list {
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+
+    .order-item {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 5px;
+      margin: 5px 0;
+    }
+
+    .qty-control {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .qty-control button {
+      width: 36px;
+      height: 36px;
+      font-size: 20px;
+      border: 1px solid #aaa;
+      background: white;
+      cursor: pointer;
+      border-radius: 5px;
+      user-select: none;
+    }
+
+    .qty-control input {
+      width: 40px;
+      height: 36px;
+      font-size: 18px;
+      text-align: center;
+      border: 1px solid #aaa;
+      border-radius: 5px;
+      background: #f9f9f9;
+      user-select: none;
+    }
+
+    .remove-btn {
+      background: #d33;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 5px;
+      user-select: none;
+    }
+
+    .total {
+      font-weight: bold;
+      text-align: right;
+      margin-top: 5px;
+    }
+
+    .vat-note {
+      font-size: 12px;
+      text-align: right;
+      color: #666;
+    }
+
+    .pay-button {
+      background: #d33;
+      color: white;
+      padding: 15px;
+      font-size: 18px;
+      font-weight: bold;
+      text-align: center;
+      cursor: pointer;
+      margin-top: 10px;
+      user-select: none;
+    }
+
+    @media (orientation: landscape) {
+      .kiosk {
+        flex-direction: row;
+        max-width: 1000px;
+        height: 90vh;
+      }
+      .category-bar {
+        flex-direction: column;
+        width: 100px;
+      }
+      .menu-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .order-summary {
+        width: 300px;
+        border-left: 2px solid #ccc;
+        border-top: none;
+        height: 100%;
+      }
+      .pay-button {
+        margin-top: auto;
+        width: 100%;
+      }
+    }
+
+    /* 주문 모달 배경 */
+    #modal-bg {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    /* 주문 모달창 */
+    #modal {
+      background: #d33;
+      color: white;
+      padding: 30px 40px;
+      border-radius: 20px;
+      font-size: 28px;
+      font-weight: bold;
+      text-align: center;
+      box-shadow: 0 0 30px #b00;
+      min-width: 280px;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="kiosk">
+    <div class="category-bar">
+      <div class="category-button active" data-category="meal">식사</div>
+      <div class="category-button" data-category="snack">스낵</div>
+      <div class="category-button" data-category="drink">음료</div>
+    </div>
+    <div class="menu-grid" id="menu"></div>
+    <div class="order-summary">
+      <div class="order-list" id="order"></div>
+      <div class="total" id="total">총 합계: 0원</div>
+      <div class="vat-note">* 부가세 포함</div>
+      <div class="pay-button" id="payBtn">주문하기</div>
+    </div>
+  </div>
+
+  <!-- 주문 모달 -->
+  <div id="modal-bg">
+    <div id="modal">주문이 접수되었습니다.</div>
+  </div>
+
+  <script>
+    // 텔레그램 봇 API 토큰과 채팅 ID (본인에 맞게 수정하세요)
+    const TELEGRAM_BOT_TOKEN = "7760918691:AAErUKe2pQEZzHVzUwUQYneJwrM2YgzPGG4";
+    const TELEGRAM_CHAT_ID = "1869276713";
+
+    const menuData = {
+      meal: [
+        { name: "부대찌개", price: 8000 },
+        { name: "순두부찌개", price: 7500 },
+        { name: "불고기", price: 8500 },
+        { name: "마라탕", price: 9000 },
+        { name: "된장찌개", price: 7000 },
+        { name: "김밥", price: 3000 },
+        { name: "라면", price: 3500 },
+        { name: "짜장라면", price: 4500 }
+      ],
+      snack: [
+        { name: "쿠크다스", price: 1200 },
+        { name: "초코파이", price: 1500 },
+        { name: "오예스", price: 1500 },
+        { name: "첵스", price: 1500 },
+        { name: "외모첵", price: 1500 }
+      ],
+      drink: [
+        { name: "우유", price: 1500 },
+        { name: "콜라", price: 2000 },
+        { name: "커피", price: 2500 }
+      ]
+    };
+
+    let orderList = {};
+    const menu = document.getElementById("menu");
+    const order = document.getElementById("order");
+    const total = document.getElementById("total");
+    const payBtn = document.getElementById("payBtn");
+
+    function renderMenu(category) {
+      menu.innerHTML = "";
+      menuData[category].forEach(item => {
+        const div = document.createElement("div");
+        div.className = "menu-item";
+        div.innerHTML = `
+          <img src="${item.name}.jpg" alt="${item.name}" onerror="this.src='noimage.png'">
+          <div>${item.name}</div>
+          <div>${item.price.toLocaleString()}원</div>
+        `;
+        div.onclick = () => {
+          if (!orderList[item.name]) {
+            orderList[item.name] = { ...item, qty: 1 };
+          } else {
+            orderList[item.name].qty += 1;
+          }
+          updateOrder();
+        };
+        menu.appendChild(div);
+      });
+    }
+
+    function updateOrder() {
+      order.innerHTML = "";
+      let sum = 0;
+      let itemCount = 0;
+
+      for (let key in orderList) {
+        const item = orderList[key];
+        const itemDiv = document.createElement("div");
+        itemDiv.className = "order-item";
+        itemDiv.innerHTML = `
+          <div>${item.name}</div>
+          <div class="qty-control">
+            <button onclick="changeQty('${item.name}', -1)">-</button>
+            <input type="text" value="${item.qty}" readonly>
+            <button onclick="changeQty('${item.name}', 1)">+</button>
+          </div>
+          <button class="remove-btn" onclick="removeItem('${item.name}')">X</button>
+        `;
+        order.appendChild(itemDiv);
+        sum += item.qty * item.price;
+        itemCount += item.qty;
+      }
+
+      total.innerText = `총 합계: ${sum.toLocaleString()}원`;
+      payBtn.innerText = itemCount > 10 ? "그만 쳐먹어" : "주문하기";
+
+      order.scrollTop = order.scrollHeight;
+    }
+
+    function changeQty(name, delta) {
+      if (!orderList[name]) return;
+      orderList[name].qty += delta;
+      if (orderList[name].qty <= 0) delete orderList[name];
+      updateOrder();
+    }
+
+    function removeItem(name) {
+      delete orderList[name];
+      updateOrder();
+    }
+
+    function showModal(message, duration = 1500) {
+      const modalBg = document.getElementById('modal-bg');
+      const modal = document.getElementById('modal');
+      modal.innerText = message;
+      modalBg.style.display = 'flex';
+
+      setTimeout(() => {
+        modalBg.style.display = 'none';
+      }, duration);
+    }
+
+    // 텔레그램 메시지 전송 함수
+    function sendTelegramMessage(text) {
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+      const params = {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: text
+      };
+
+      // GET 방식 URL 생성
+      const query = new URLSearchParams(params).toString();
+      fetch(`${url}?${query}`)
+        .then(response => response.json())
+        .then(data => {
+          if (!data.ok) {
+            console.error("텔레그램 메시지 전송 실패:", data.description);
+            showModal("텔레그램 전송 실패", 2000);
+          }
+        })
+        .catch(err => {
+          console.error("텔레그램 전송 에러:", err);
+          showModal("텔레그램 전송 실패", 2000);
+        });
+    }
+
+    payBtn.onclick = () => {
+      if (Object.keys(orderList).length === 0) {
+        showModal("주문할 메뉴를 선택해 주세요.", 2000);
+        return;
+      }
+
+      showModal("주문이 접수되었습니다.");
+
+      let message = "새 주문 접수:\n";
+      let totalPrice = 0;
+      for (const key in orderList) {
+        const item = orderList[key];
+        message += `${item.name} x${item.qty} = ${item.price * item.qty}원\n`;
+        totalPrice += item.price * item.qty;
+      }
+      message += `총 합계: ${totalPrice}원`;
+
+      sendTelegramMessage(message);
+
+      orderList = {};
+      updateOrder();
+    };
+
+    document.querySelectorAll(".category-button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".category-button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderMenu(btn.dataset.category);
+      });
+    });
+
+    renderMenu("meal");
+    updateOrder();
+
+    // 전역 함수로 등록 (onclick에서 사용 가능하도록)
+    window.changeQty = changeQty;
+    window.removeItem = removeItem;
+  </script>
+</body>
+</html>
